@@ -23,4 +23,5 @@ Open http://localhost:3030
 - MVP only: local-only, no database, no encryption.
 - Each account uses its own persistent browser profile under `.profiles/`.
 - Best-effort parsing of `https://chatgpt.com/codex/settings/usage`.
+- Login opens from `https://chatgpt.com/` first (more stable than hard-jumping to `/auth/login`).
 - This is not official OAuth; it captures your authenticated session from an isolated local browser context you log into yourself.

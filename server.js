@@ -10,7 +10,8 @@ const DATA_DIR = path.join(__dirname, '.data');
 const PROFILES_DIR = path.join(__dirname, '.profiles');
 const ACCOUNTS_FILE = path.join(DATA_DIR, 'accounts.json');
 const TARGET_URL = 'https://chatgpt.com/codex/settings/usage';
-const LOGIN_URL = 'https://chatgpt.com/auth/login';
+// More robust than /auth/login: let ChatGPT decide whether to show home, redirect, or login.
+const LOGIN_URL = 'https://chatgpt.com/';
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(PROFILES_DIR, { recursive: true });
@@ -235,7 +236,7 @@ qs('#addBtn').onclick = async()=>{
   const label = qs('#label').value.trim();
   const res = await fetch('/api/login/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({label})});
   const data = await res.json();
-  qs('#flow').textContent = 'Browser opened. Finish login there…';
+  qs('#flow').textContent = 'Browser opened. If ChatGPT home shows up, click Log in there, then finish login.';
   pollFlow(data.flowId);
 };
 qs('#checkBtn').onclick = async()=>{
