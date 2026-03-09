@@ -1,32 +1,24 @@
-# GPT Usage Checker MVP v2
+# GPT Usage Checker MVP v3
 
 ## Goal
-Validate a better UX for multi-account GPT/Codex checking:
-- Add account by login, not manual cookie paste
-- Store each account in an isolated browser profile
-- Probe all accounts in parallel from one dashboard
+Validate multi-account GPT/Codex checking without Playwright login.
 
-## User flow
-1. Open local dashboard
-2. Click **Add account**
-3. Playwright opens a dedicated browser profile
-4. User logs into ChatGPT manually
-5. App detects authenticated session and saves the account profile
-6. Click **Run check** to probe all saved accounts concurrently
+## New approach
+- User manually logs into ChatGPT in real Chrome/Chromium profiles
+- App scans local browser profiles
+- App imports ChatGPT cookies from selected profiles
+- App probes all imported accounts concurrently
 
-## Why this version
-- Much better than manual cookie paste
-- Still minimal cost
-- Good enough to validate whether multi-account checking is possible
+## Why
+- Avoid Playwright login / bot fingerprinting
+- Much closer to the real user browser session
+- Lower risk of login flow breakage
 
 ## Success criteria
-- 2+ accounts can be added independently
-- Saved accounts remain isolated
-- One click can check all saved accounts
-- Per-account result card is visible
+- 2+ real browser profiles can be imported
+- Imported sessions stay isolated
+- One click can check all imported accounts
 
-## Not in scope
-- Official OAuth
-- Encryption / secret storage hardening
-- Production parsing accuracy
-- Desktop packaging
+## Known limitation
+- Current MVP only reads plaintext cookie values from Chrome SQLite DB
+- If the browser stores only encrypted values on your machine, we need a v4 decryption step

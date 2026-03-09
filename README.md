@@ -1,27 +1,25 @@
 # gpt-usage-checker
 
-Login-based MVP for checking multiple GPT/Codex web accounts in parallel.
+Profile-import MVP for checking multiple GPT/Codex web accounts in parallel.
 
 ## Flow
 - Open local UI
-- Click **Add account**
-- A dedicated Playwright browser profile opens
-- You log in to ChatGPT manually
-- App stores that isolated session as one account
-- Click **Run check** to probe all accounts concurrently
+- In your real Chrome/Chromium browser, create/login different profiles manually
+- In the app, click **Rescan profiles**
+- Select one profile and **Import session**
+- Repeat for multiple accounts
+- Click **Run check** to probe all imported accounts concurrently
 
 ## Run
 
 ```bash
-npm install
-npm start
+node server.js
 ```
 
 Open http://localhost:3030
 
 ## Notes
-- MVP only: local-only, no database, no encryption.
-- Each account uses its own persistent browser profile under `.profiles/`.
-- Best-effort parsing of `https://chatgpt.com/codex/settings/usage`.
-- Login opens from `https://chatgpt.com/` first (more stable than hard-jumping to `/auth/login`).
-- This is not official OAuth; it captures your authenticated session from an isolated local browser context you log into yourself.
+- No Playwright login flow.
+- The app reads existing local browser profile cookies from your real browser profile path.
+- This is still MVP: local-only, no DB, no encryption, best-effort cookie parsing.
+- Close the target browser profile before import if its cookie DB is locked.
