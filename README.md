@@ -1,25 +1,26 @@
 # gpt-usage-checker
 
-Minimal MVP for checking multiple GPT/Codex web accounts in parallel.
+Login-based MVP for checking multiple GPT/Codex web accounts in parallel.
 
-## MVP scope
-- Local web UI
-- Paste multiple account cookie headers manually
-- Probe all accounts concurrently
-- Show per-account status, detected email, lightweight usage hints, and raw snippet
+## Flow
+- Open local UI
+- Click **Add account**
+- A dedicated Playwright browser profile opens
+- You log in to ChatGPT manually
+- App stores that isolated session as one account
+- Click **Run check** to probe all accounts concurrently
 
 ## Run
 
 ```bash
-node server.js
+npm install
+npm start
 ```
 
 Open http://localhost:3030
 
-## Input
-For each account, paste a full `Cookie:` header copied from an authenticated `chatgpt.com` request.
-
 ## Notes
-- This MVP is for validation only.
-- No DB, no encryption, no auto-login.
-- Parsing is best-effort and may need adjustment if OpenAI changes the page.
+- MVP only: local-only, no database, no encryption.
+- Each account uses its own persistent browser profile under `.profiles/`.
+- Best-effort parsing of `https://chatgpt.com/codex/settings/usage`.
+- This is not official OAuth; it captures your authenticated session from an isolated local browser context you log into yourself.
