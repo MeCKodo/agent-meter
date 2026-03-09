@@ -1,24 +1,37 @@
-# gpt-usage-checker
+# agent-meter
 
-Connect-style MVP for checking multiple GPT/Codex accounts in parallel.
+CLI tool for managing multiple Codex OAuth accounts and checking their rate limits / usage.
 
-## Product flow
-- Open local UI
-- Click **Connect account**
-- A dedicated account window opens
-- User logs into ChatGPT manually
-- App detects authenticated session and saves that account
-- The dashboard auto-refreshes and can immediately **Run check**
-
-## Important
-This is **not official OpenAI OAuth**.
-It is an OAuth-like connection UX built on top of isolated browser sessions.
-
-## Run
+## Install
 
 ```bash
-npm install
-npm start
+pnpm install
 ```
 
-Open http://localhost:3030
+## Usage
+
+```bash
+# Add a new account (opens browser for OAuth login, then auto-checks usage)
+pnpm dev add
+
+# List all accounts with real-time usage check
+pnpm dev list
+
+# Remove an account by email
+pnpm dev delete <email>
+```
+
+## How it works
+
+- `add` creates an isolated `CODEX_HOME` directory, runs `codex login`, then immediately checks usage
+- `list` concurrently checks all accounts via the OAuth usage API and displays a table with progress bars
+- `delete` removes the account and its `CODEX_HOME` directory
+- If a token expires during `list`, you'll be prompted to re-login on the spot
+
+## Options
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output raw JSON |
+| `--verbose` | Enable verbose logging |
+| `--data-dir <path>` | Override the default `.data` directory |
