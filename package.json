@@ -1,10 +1,10 @@
 {
   "name": "@kodo/agent-meter",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "CLI tool for managing multiple Codex OAuth accounts and checking rate limits",
   "bin": {
-    "agent-meter": "./dist/cli.js"
+    "agent-meter": "dist/cli.js"
   },
   "files": [
     "dist"

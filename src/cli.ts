@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import readline from 'node:readline';
 import { Command } from 'commander';
 import {
@@ -27,14 +29,19 @@ type GlobalOptions = {
   dataDir?: string;
 };
 
+const DEFAULT_DATA_DIR = path.join(os.homedir(), '.agent-meter');
+
 function resolveDataDir(opts: GlobalOptions): string {
-  if (!opts.dataDir) return `${process.cwd()}/.data`;
+  if (!opts.dataDir) return DEFAULT_DATA_DIR;
   const resolved = opts.dataDir.startsWith('/') ? opts.dataDir : `${process.cwd()}/${opts.dataDir}`;
   return fs.existsSync(resolved) ? fs.realpathSync(resolved) : resolved;
 }
 
 function getStore(opts: GlobalOptions): { paths: ReturnType<typeof createDataPaths>; store: AccountStore } {
   const dataDir = resolveDataDir(opts);
+  if (!opts.dataDir) {
+    migrateLegacyData(dataDir, Boolean(opts.verbose));
+  }
   const paths = createDataPaths(dataDir);
   ensureDataPaths(paths);
   return {
@@ -53,6 +60,52 @@ function confirm(question: string): Promise<boolean> {
   });
 }
 
+function migrateLegacyData(targetDir: string, verbose: boolean): void {
+  if (fs.existsSync(path.join(targetDir, 'accounts.json'))) return;
+
+  const legacyDir = path.join(process.cwd(), '.data');
+  if (!fs.existsSync(path.join(legacyDir, 'accounts.json'))) return;
+
+  fs.mkdirSync(targetDir, { recursive: true });
+
+  const copyRecursive = (src: string, dest: string) => {
+    let stat: fs.Stats;
+    try { stat = fs.statSync(src); } catch { return; }
+    if (stat.isDirectory()) {
+      fs.mkdirSync(dest, { recursive: true });
+      for (const child of fs.readdirSync(src)) {
+        copyRecursive(path.join(src, child), path.join(dest, child));
+      }
+    } else {
+      fs.copyFileSync(src, dest);
+    }
+  };
+
+  for (const entry of fs.readdirSync(legacyDir)) {
+    copyRecursive(path.join(legacyDir, entry), path.join(targetDir, entry));
+  }
+
+  // Rewrite codexHome paths in accounts.json to point to the new location
+  const accountsFile = path.join(targetDir, 'accounts.json');
+  try {
+    const raw = JSON.parse(fs.readFileSync(accountsFile, 'utf8'));
+    const legacyHomesDir = path.join(legacyDir, 'codex-homes');
+    const newHomesDir = path.join(targetDir, 'codex-homes');
+    const accounts = Array.isArray(raw?.accounts) ? raw.accounts : (Array.isArray(raw) ? raw : []);
+    for (const account of accounts) {
+      if (typeof account.codexHome === 'string' && account.codexHome.startsWith(legacyHomesDir)) {
+        account.codexHome = account.codexHome.replace(legacyHomesDir, newHomesDir);
+      }
+    }
+    fs.writeFileSync(accountsFile, JSON.stringify(raw, null, 2));
+  } catch { /* best effort */ }
+
+  if (verbose) {
+    process.stderr.write(`Migrated data from ${legacyDir} → ${targetDir}\n`);
+  }
+  process.stdout.write(`✓ Data migrated from .data/ to ${targetDir}\n`);
+}
+
 const program = new Command();
 
 program
@@ -60,7 +113,7 @@ program
   .description('Multi-account Codex OAuth usage checker')
   .option('--json', 'output JSON')
   .option('--verbose', 'enable verbose logging')
-  .option('--data-dir <path>', 'override .data directory');
+  .option('--data-dir <path>', `override data directory (default: ~/.agent-meter)`);
 
 program
   .command('add')
