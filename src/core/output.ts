@@ -86,15 +86,6 @@ function formatUsage(usedPercent: number | null, remainingPercent: number | null
   return `${bar} ${coloredPct}${resetText}`;
 }
 
-function formatCredits(lastCheck: LastCheck | null): string {
-  if (!lastCheck) return c(DIM, '-');
-  if (lastCheck.creditsUnlimited) return c(GREEN + BOLD, '∞');
-  if (lastCheck.creditsBalance == null) return c(DIM, '-');
-  const balance = lastCheck.creditsBalance;
-  if (balance <= 0) return c(RED, '$' + balance.toFixed(2));
-  return c(GREEN, '$' + balance.toFixed(2));
-}
-
 function formatPlan(plan: string | null): string {
   if (!plan) return c(DIM, '-');
   const upper = plan.charAt(0).toUpperCase() + plan.slice(1);
@@ -169,19 +160,16 @@ export function renderAccountsTable(store: AccountStore): string {
 
   const rows = store.accounts.map(account => {
     const isDefault = store.defaultAccountId === account.id;
-    const marker = isDefault ? c(GREEN + BOLD, '→') : ' ';
     return [
-      marker,
       c(isDefault ? WHITE + BOLD : WHITE, account.email || '-'),
       formatUsage(account.lastCheck?.primaryUsedPercent ?? null, account.lastCheck?.primaryRemainingPercent ?? null, account.lastCheck?.primaryResetAt ?? null),
       formatUsage(account.lastCheck?.secondaryUsedPercent ?? null, account.lastCheck?.secondaryRemainingPercent ?? null, account.lastCheck?.secondaryResetAt ?? null),
-      formatCredits(account.lastCheck),
       formatStatus(account.lastCheck),
     ];
   });
 
   const title = c(BOLD, `Accounts (${store.accounts.length})`);
-  return `${title}\n${renderTable(['', 'Email', '5h Remaining', 'Weekly Remaining', 'Credits', 'Status'], rows)}`;
+  return `${title}\n${renderTable(['Email', '5h Remaining', 'Weekly Remaining', 'Status'], rows)}`;
 }
 
 export function printJson(value: unknown): void {
