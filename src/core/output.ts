@@ -161,7 +161,7 @@ export function renderAccountsTable(store: AccountStore): string {
   const rows = store.accounts.map(account => {
     const isDefault = store.defaultAccountId === account.id;
     return [
-      c(isDefault ? WHITE + BOLD : WHITE, account.email || '-'),
+      c(isDefault ? WHITE + BOLD : WHITE, `${isDefault ? '* ' : '  '}${account.email || '-'}`),
       formatUsage(account.lastCheck?.primaryUsedPercent ?? null, account.lastCheck?.primaryRemainingPercent ?? null, account.lastCheck?.primaryResetAt ?? null),
       formatUsage(account.lastCheck?.secondaryUsedPercent ?? null, account.lastCheck?.secondaryRemainingPercent ?? null, account.lastCheck?.secondaryResetAt ?? null),
       formatStatus(account.lastCheck),

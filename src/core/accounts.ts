@@ -219,6 +219,21 @@ export function markLastUsed(account: Account, at = nowIso()): Account {
   };
 }
 
+export function getDefaultAccount(store: AccountStore): Account | null {
+  if (store.accounts.length === 0) return null;
+  return store.accounts.find(account => account.id === store.defaultAccountId) ?? store.accounts[0] ?? null;
+}
+
+export function setDefaultAccount(store: AccountStore, accountId: string): AccountStore {
+  if (!store.accounts.some(account => account.id === accountId)) {
+    throw new Error('Account not found');
+  }
+  return {
+    ...store,
+    defaultAccountId: accountId,
+  };
+}
+
 export function resolveAccountRef(store: AccountStore, ref: string): Account {
   const trimmed = ref.trim();
   const byId = store.accounts.find(account => account.id === trimmed);

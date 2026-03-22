@@ -8,6 +8,7 @@ import {
   createCodexHome,
   createDataPaths,
   ensureDataPaths,
+  getDefaultAccount,
   makeId,
   markLastUsed,
   nowIso,
@@ -15,6 +16,7 @@ import {
   readStore,
   removeAccountFromStore,
   resolveAccountRef,
+  setDefaultAccount,
   updateAccount,
   writeStore,
   type AccountStore,
@@ -48,6 +50,10 @@ function getStore(opts: GlobalOptions): { paths: ReturnType<typeof createDataPat
     paths,
     store: readStore(paths),
   };
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\"'\"'`)}'`;
 }
 
 function confirm(question: string): Promise<boolean> {
@@ -223,6 +229,50 @@ program
       return;
     }
     process.stdout.write(`${renderAccountsTable(nextStore)}\n`);
+  });
+
+program
+  .command('current')
+  .description('show the current default account')
+  .action(() => {
+    const opts = program.opts<GlobalOptions>();
+    const { store } = getStore(opts);
+    const account = getDefaultAccount(store);
+
+    if (opts.json) {
+      printJson({ account });
+      return;
+    }
+
+    if (!account) {
+      process.stdout.write('No accounts configured.\n');
+      return;
+    }
+
+    process.stdout.write(`Current account: ${account.email || account.label}\n`);
+    process.stdout.write(`CODEX_HOME=${account.codexHome}\n`);
+  });
+
+program
+  .command('use')
+  .argument('<account>')
+  .description('set the default account and print shell code to export CODEX_HOME')
+  .action((ref: string) => {
+    const opts = program.opts<GlobalOptions>();
+    const { paths, store } = getStore(opts);
+    const account = resolveAccountRef(store, ref);
+    const nextStore = setDefaultAccount(store, account.id);
+    writeStore(paths, nextStore);
+
+    if (opts.json) {
+      printJson({
+        account: nextStore.accounts.find(item => item.id === account.id) ?? account,
+        export: `export CODEX_HOME=${shellQuote(account.codexHome)}`,
+      });
+      return;
+    }
+
+    process.stdout.write(`export CODEX_HOME=${shellQuote(account.codexHome)}\n`);
   });
 
 program

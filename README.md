@@ -25,6 +25,12 @@ agent-meter add
 # List all accounts with real-time usage check
 agent-meter list
 
+# Show the current default account
+agent-meter current
+
+# Switch the default Codex account for the current shell
+eval "$(agent-meter use <email-or-id>)"
+
 # Remove an account by email
 agent-meter delete <email>
 ```
@@ -33,6 +39,8 @@ agent-meter delete <email>
 
 - `add` creates an isolated `CODEX_HOME` directory, runs `codex login`, then immediately checks usage
 - `list` concurrently checks all accounts via the OAuth usage API and displays a table with progress bars
+- `current` shows which account is currently marked as the default
+- `use` changes the default account and prints an `export CODEX_HOME=...` command for your shell
 - `delete` removes the account and its `CODEX_HOME` directory
 - If a token expires during `list`, you'll be prompted to re-login on the spot
 
