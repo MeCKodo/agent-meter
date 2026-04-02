@@ -21,6 +21,14 @@ export const CODEX_AUTH_OVERRIDE_ENV_VARS = [
   'OPENAI_BASE_URL',
 ] as const;
 
+export interface CodexCommandResult {
+  ok: boolean;
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  error: string | null;
+}
+
 export function authFilePath(codexHome: string): string {
   return path.join(codexHome, 'auth.json');
 }
@@ -84,12 +92,27 @@ export function buildCodexEnv(codexHome: string, sourceEnv: NodeJS.ProcessEnv = 
   return env;
 }
 
+export function captureCodexCommand(args: string[], env: NodeJS.ProcessEnv = process.env): CodexCommandResult {
+  const result = spawnSync('codex', args, {
+    env,
+    encoding: 'utf8',
+  });
+
+  return {
+    ok: !result.error && result.status === 0,
+    exitCode: result.status,
+    stdout: result.stdout || '',
+    stderr: result.stderr || '',
+    error: result.error ? String(result.error.message || result.error) : null,
+  };
+}
+
 export function runCodexCommand(args: string[], env: NodeJS.ProcessEnv): void {
-  ensureCodexInstalled();
   const result = spawnSync('codex', args, {
     stdio: 'inherit',
     env,
   });
+
   if (result.error) {
     throw result.error;
   }

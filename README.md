@@ -16,6 +16,8 @@ Or run directly with npx:
 npx -y @kodo/agent-meter@latest list
 ```
 
+If you do not install globally, replace `agent-meter` in the examples below with `npx -y @kodo/agent-meter@latest`.
+
 ## Usage
 
 ```bash
@@ -34,6 +36,9 @@ eval "$(agent-meter use <email-or-id>)"
 # Launch Codex directly with a selected account
 agent-meter codex <email-or-id>
 
+# Diagnose why switching is not taking effect
+agent-meter doctor [email-or-id]
+
 # Remove an account by email
 agent-meter delete <email>
 ```
@@ -45,9 +50,20 @@ agent-meter delete <email>
 - `current` shows the default account, the shell's effective auth source, and whether environment variables are overriding `CODEX_HOME`
 - `use` changes the default account and prints shell code that unsets conflicting OpenAI env vars and exports `CODEX_HOME=...`; to affect the current shell, wrap it with `eval "$( ... )"`
 - `codex` launches a new Codex CLI process with the selected account, so you can switch accounts without shell `eval`
+- `doctor` diagnoses why switching may not be taking effect and prints copy-paste fixes
 - `use` only affects new Codex CLI processes; restart any running `codex` session after switching
 - `delete` removes the account and its `CODEX_HOME` directory
 - If a token expires during `list`, you'll be prompted to re-login on the spot
+
+## Troubleshooting
+
+```bash
+# Diagnose the current shell
+agent-meter doctor
+
+# Diagnose a specific target account
+agent-meter doctor huangzheyu@bytedance.com
+```
 
 ## Prerequisites
 

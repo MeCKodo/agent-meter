@@ -25,6 +25,7 @@ import {
 import {
   CODEX_AUTH_OVERRIDE_ENV_VARS,
   buildCodexEnv,
+  captureCodexCommand,
   ensureCodexInstalled,
   loadCredentials,
   runCodexCommand,
@@ -37,6 +38,20 @@ type GlobalOptions = {
   json?: boolean;
   verbose?: boolean;
   dataDir?: string;
+};
+
+type AuthSource = 'environment' | 'codex_home';
+
+type ShellState = {
+  defaultAccount: ReturnType<typeof getDefaultAccount>;
+  targetAccount: ReturnType<typeof getDefaultAccount>;
+  effectiveCodexHome: string | null;
+  authOverrideVars: string[];
+  codexHomeAccount: ReturnType<typeof getDefaultAccount>;
+  effectiveAccount: ReturnType<typeof getDefaultAccount>;
+  effectiveAuthSource: AuthSource;
+  matchesDefault: boolean;
+  matchesTarget: boolean | null;
 };
 
 const DEFAULT_DATA_DIR = path.join(os.homedir(), '.agent-meter');
@@ -84,9 +99,11 @@ function renderUseGuidance(accountRef: string): string {
     '',
     'To switch the current shell:',
     `  eval "$(agent-meter use ${shellQuote(accountRef)})"`,
+    `  eval "$(npx -y @kodo/agent-meter@latest use ${shellQuote(accountRef)})"`,
     '',
     'To launch Codex directly with this account:',
     `  agent-meter codex ${shellQuote(accountRef)}`,
+    `  npx -y @kodo/agent-meter@latest codex ${shellQuote(accountRef)}`,
   ].join('\n');
 }
 
@@ -102,6 +119,51 @@ function findAccountByCodexHome(store: AccountStore, codexHome: string | undefin
   if (!codexHome) return null;
   const target = normalizePathForCompare(codexHome);
   return store.accounts.find(account => normalizePathForCompare(account.codexHome) === target) ?? null;
+}
+
+function inspectShellState(
+  store: AccountStore,
+  env: NodeJS.ProcessEnv = process.env,
+  targetAccount: ReturnType<typeof getDefaultAccount> = null,
+): ShellState {
+  const defaultAccount = getDefaultAccount(store);
+  const effectiveCodexHome = env.CODEX_HOME || null;
+  const authOverrideVars = getActiveAuthOverrideEnvVars(env);
+  const codexHomeAccount = findAccountByCodexHome(store, effectiveCodexHome || undefined);
+  const effectiveAccount = authOverrideVars.length > 0 ? null : codexHomeAccount;
+  const effectiveAuthSource: AuthSource = authOverrideVars.length > 0 ? 'environment' : 'codex_home';
+
+  return {
+    defaultAccount,
+    targetAccount,
+    effectiveCodexHome,
+    authOverrideVars,
+    codexHomeAccount,
+    effectiveAccount,
+    effectiveAuthSource,
+    matchesDefault: Boolean(defaultAccount && effectiveAccount && defaultAccount.id === effectiveAccount.id),
+    matchesTarget: targetAccount ? Boolean(effectiveAccount && targetAccount.id === effectiveAccount.id) : null,
+  };
+}
+
+function recommendedAccountRef(state: ShellState): string | null {
+  return state.targetAccount?.email || state.targetAccount?.label || state.defaultAccount?.email || state.defaultAccount?.label || null;
+}
+
+function recommendedFixCommands(state: ShellState): string[] {
+  const ref = recommendedAccountRef(state);
+  if (!ref) return [];
+
+  return [
+    `agent-meter codex ${shellQuote(ref)}`,
+    `eval "$(agent-meter use ${shellQuote(ref)})"`,
+    `npx -y @kodo/agent-meter@latest codex ${shellQuote(ref)}`,
+    `eval "$(npx -y @kodo/agent-meter@latest use ${shellQuote(ref)})"`,
+  ];
+}
+
+function preferredCommandOutput(stdout: string, stderr: string): string {
+  return stdout.trim() || stderr.trim();
 }
 
 function confirm(question: string): Promise<boolean> {
@@ -285,60 +347,54 @@ program
   .action(() => {
     const opts = program.opts<GlobalOptions>();
     const { store } = getStore(opts);
-    const account = getDefaultAccount(store);
-    const effectiveCodexHome = process.env.CODEX_HOME;
-    const authOverrideVars = getActiveAuthOverrideEnvVars();
-    const codexHomeAccount = findAccountByCodexHome(store, effectiveCodexHome);
-    const effectiveAccount = authOverrideVars.length > 0 ? null : codexHomeAccount;
-    const effectiveAuthSource = authOverrideVars.length > 0 ? 'environment' : 'codex_home';
-    const matchesDefault = Boolean(account && effectiveAccount && account.id === effectiveAccount.id);
+    const state = inspectShellState(store);
 
     if (opts.json) {
       printJson({
-        account,
-        effectiveAuthSource,
-        effectiveAccount,
-        codexHomeAccount,
-        effectiveCodexHome: effectiveCodexHome || null,
-        authOverrideVars,
-        matchesDefault,
+        account: state.defaultAccount,
+        effectiveAuthSource: state.effectiveAuthSource,
+        effectiveAccount: state.effectiveAccount,
+        codexHomeAccount: state.codexHomeAccount,
+        effectiveCodexHome: state.effectiveCodexHome,
+        authOverrideVars: state.authOverrideVars,
+        matchesDefault: state.matchesDefault,
       });
       return;
     }
 
-    if (!account) {
+    if (!state.defaultAccount) {
       process.stdout.write('Default account: none\n');
       process.stdout.write('Default CODEX_HOME=\n');
     } else {
-      process.stdout.write(`Default account: ${account.email || account.label}\n`);
-      process.stdout.write(`Default CODEX_HOME=${account.codexHome}\n`);
+      process.stdout.write(`Default account: ${state.defaultAccount.email || state.defaultAccount.label}\n`);
+      process.stdout.write(`Default CODEX_HOME=${state.defaultAccount.codexHome}\n`);
     }
 
-    if (authOverrideVars.length > 0) {
-      process.stdout.write(`Effective auth source: environment override (${authOverrideVars.join(', ')})\n`);
-      if (effectiveCodexHome) {
-        process.stdout.write(`Effective CODEX_HOME=${effectiveCodexHome} (currently overridden)\n`);
+    if (state.authOverrideVars.length > 0) {
+      process.stdout.write(`Effective auth source: environment override (${state.authOverrideVars.join(', ')})\n`);
+      if (state.effectiveCodexHome) {
+        process.stdout.write(`Effective CODEX_HOME=${state.effectiveCodexHome} (currently overridden)\n`);
       }
-      if (codexHomeAccount) {
-        process.stdout.write(`CODEX_HOME account: ${codexHomeAccount.email || codexHomeAccount.label}\n`);
+      if (state.codexHomeAccount) {
+        process.stdout.write(`CODEX_HOME account: ${state.codexHomeAccount.email || state.codexHomeAccount.label}\n`);
       }
       process.stdout.write('Shell status: overridden by environment variables\n');
       return;
     }
 
-    if (!effectiveCodexHome) {
+    if (!state.effectiveCodexHome) {
       process.stdout.write('Effective shell account: none (CODEX_HOME is not set)\n');
       return;
     }
 
-    process.stdout.write(`Effective CODEX_HOME=${effectiveCodexHome}\n`);
-    if (!effectiveAccount) {
+    process.stdout.write(`Effective CODEX_HOME=${state.effectiveCodexHome}\n`);
+    if (!state.effectiveAccount) {
       process.stdout.write('Effective shell account: unknown (CODEX_HOME is outside agent-meter store)\n');
       return;
     }
 
-    process.stdout.write(`Effective shell account: ${effectiveAccount.email || effectiveAccount.label}\n`);
-    process.stdout.write(matchesDefault ? 'Shell status: matches default account\n' : 'Shell status: differs from default account\n');
+    process.stdout.write(`Effective shell account: ${state.effectiveAccount.email || state.effectiveAccount.label}\n`);
+    process.stdout.write(state.matchesDefault ? 'Shell status: matches default account\n' : 'Shell status: differs from default account\n');
   });
 
 program
@@ -363,7 +419,7 @@ program
     }
 
     if (process.stdout.isTTY) {
-      process.stdout.write(`${renderUseGuidance(ref)}\n`);
+      process.stdout.write(`${renderUseGuidance(account.email || account.label)}\n`);
       return;
     }
 
@@ -387,6 +443,88 @@ program
 
     process.stderr.write(`Launching codex with ${account.email || account.label}.\n`);
     runCodexCommand(codexArgs, buildCodexEnv(account.codexHome));
+  });
+
+program
+  .command('doctor')
+  .argument('[account]')
+  .description('diagnose why account switching may not be taking effect')
+  .action((ref?: string) => {
+    const opts = program.opts<GlobalOptions>();
+    const { store } = getStore(opts);
+    const targetAccount = ref ? resolveAccountRef(store, ref) : null;
+    const state = inspectShellState(store, process.env, targetAccount);
+    const codexVersion = captureCodexCommand(['--version']);
+    const codexLoginStatus = captureCodexCommand(['login', 'status']);
+    const recommendations = recommendedFixCommands(state);
+    const findings: string[] = [];
+
+    if (state.authOverrideVars.length > 0) {
+      findings.push(`Environment variables override account switching: ${state.authOverrideVars.join(', ')}`);
+    } else if (!state.effectiveCodexHome) {
+      findings.push('CODEX_HOME is not set in the current shell');
+    } else if (!state.codexHomeAccount) {
+      findings.push('CODEX_HOME points outside the agent-meter account store');
+    }
+
+    if (targetAccount) {
+      if (state.matchesTarget) {
+        findings.push(`Current shell already points at ${targetAccount.email || targetAccount.label}`);
+      } else {
+        findings.push(`Current shell is not using ${targetAccount.email || targetAccount.label}`);
+      }
+    } else if (state.defaultAccount && !state.matchesDefault) {
+      findings.push('Current shell does not match the default account');
+    }
+
+    if (codexVersion.error) {
+      findings.push(`Codex CLI is unavailable: ${codexVersion.error}`);
+    }
+
+    if (opts.json) {
+      printJson({
+        targetAccount,
+        shell: state,
+        codexVersion,
+        codexLoginStatus,
+        findings,
+        recommendations,
+      });
+      return;
+    }
+
+    process.stdout.write('Doctor report\n');
+    process.stdout.write(`- Codex CLI: ${codexVersion.ok ? preferredCommandOutput(codexVersion.stdout, codexVersion.stderr) : `unavailable (${codexVersion.error || preferredCommandOutput(codexVersion.stdout, codexVersion.stderr) || 'unknown error'})`}\n`);
+    process.stdout.write(`- Default account: ${state.defaultAccount ? (state.defaultAccount.email || state.defaultAccount.label) : 'none'}\n`);
+    process.stdout.write(`- Target account: ${targetAccount ? (targetAccount.email || targetAccount.label) : 'none'}\n`);
+    process.stdout.write(`- Effective auth source: ${state.effectiveAuthSource}${state.authOverrideVars.length > 0 ? ` (${state.authOverrideVars.join(', ')})` : ''}\n`);
+    process.stdout.write(`- Effective CODEX_HOME: ${state.effectiveCodexHome || '(not set)'}\n`);
+    process.stdout.write(`- CODEX_HOME account: ${state.codexHomeAccount ? (state.codexHomeAccount.email || state.codexHomeAccount.label) : 'unknown'}\n`);
+    process.stdout.write(`- Effective shell account: ${state.effectiveAccount ? (state.effectiveAccount.email || state.effectiveAccount.label) : 'none'}\n`);
+    process.stdout.write(`- codex login status: ${codexLoginStatus.ok ? preferredCommandOutput(codexLoginStatus.stdout, codexLoginStatus.stderr) : (codexLoginStatus.error || preferredCommandOutput(codexLoginStatus.stdout, codexLoginStatus.stderr) || 'unknown')}\n`);
+
+    if (state.authOverrideVars.length > 0) {
+      process.stdout.write('- Note: `codex login status` does not reveal API-key environment overrides.\n');
+    }
+
+    if (findings.length === 0) {
+      process.stdout.write('- Diagnosis: no obvious switching problem found.\n');
+    } else {
+      process.stdout.write('- Findings:\n');
+      for (const finding of findings) {
+        process.stdout.write(`  - ${finding}\n`);
+      }
+    }
+
+    if (findings.length > 0 && recommendations.length > 0) {
+      process.stdout.write('- Try one of these fixes:\n');
+      for (const command of recommendations) {
+        process.stdout.write(`  - ${command}\n`);
+      }
+    } else if (recommendations.length > 0) {
+      process.stdout.write('- Tip: if a running Codex window still looks stale, start a fresh process with:\n');
+      process.stdout.write(`  - ${recommendations[0]}\n`);
+    }
   });
 
 program
