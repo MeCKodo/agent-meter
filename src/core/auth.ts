@@ -16,6 +16,10 @@ export interface Credentials {
 export const REFRESH_URL = 'https://auth.openai.com/oauth/token';
 export const OAUTH_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
 export const TOKEN_REFRESH_INTERVAL_MS = 8 * 24 * 60 * 60 * 1000;
+export const CODEX_AUTH_OVERRIDE_ENV_VARS = [
+  'OPENAI_API_KEY',
+  'OPENAI_BASE_URL',
+] as const;
 
 export function authFilePath(codexHome: string): string {
   return path.join(codexHome, 'auth.json');
@@ -67,21 +71,35 @@ export function ensureCodexInstalled(): void {
   }
 }
 
-export function runCodexLogin(codexHome: string, verbose: boolean): void {
+export function buildCodexEnv(codexHome: string, sourceEnv: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    ...sourceEnv,
+    CODEX_HOME: codexHome,
+  };
+
+  for (const variable of CODEX_AUTH_OVERRIDE_ENV_VARS) {
+    delete env[variable];
+  }
+
+  return env;
+}
+
+export function runCodexCommand(args: string[], env: NodeJS.ProcessEnv): void {
   ensureCodexInstalled();
-  const result = spawnSync('codex', ['login'], {
+  const result = spawnSync('codex', args, {
     stdio: 'inherit',
-    env: {
-      ...process.env,
-      CODEX_HOME: codexHome,
-    },
+    env,
   });
   if (result.error) {
     throw result.error;
   }
   if (result.status !== 0) {
-    throw new Error(`codex login failed with exit code ${result.status ?? 1}`);
+    throw new Error(`codex ${args.join(' ')} failed with exit code ${result.status ?? 1}`);
   }
+}
+
+export function runCodexLogin(codexHome: string, verbose: boolean): void {
+  runCodexCommand(['login'], buildCodexEnv(codexHome));
   if (verbose) {
     process.stderr.write(`login completed for CODEX_HOME=${codexHome}\n`);
   }

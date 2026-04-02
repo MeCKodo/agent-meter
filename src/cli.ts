@@ -22,7 +22,14 @@ import {
   writeStore,
   type AccountStore,
 } from './core/accounts.js';
-import { ensureCodexInstalled, loadCredentials, runCodexLogin } from './core/auth.js';
+import {
+  CODEX_AUTH_OVERRIDE_ENV_VARS,
+  buildCodexEnv,
+  ensureCodexInstalled,
+  loadCredentials,
+  runCodexCommand,
+  runCodexLogin,
+} from './core/auth.js';
 import { printJson, renderAccountsTable } from './core/output.js';
 import { checkAccount } from './core/usage.js';
 
@@ -57,11 +64,6 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
 }
 
-const CODEX_AUTH_OVERRIDE_ENV_VARS = [
-  'OPENAI_API_KEY',
-  'OPENAI_BASE_URL',
-] as const;
-
 function getActiveAuthOverrideEnvVars(env: NodeJS.ProcessEnv = process.env): string[] {
   return CODEX_AUTH_OVERRIDE_ENV_VARS.filter(name => {
     const value = env[name];
@@ -73,6 +75,18 @@ function buildUseShellCode(codexHome: string): string {
   return [
     `unset ${CODEX_AUTH_OVERRIDE_ENV_VARS.join(' ')}`,
     `export CODEX_HOME=${shellQuote(codexHome)}`,
+  ].join('\n');
+}
+
+function renderUseGuidance(accountRef: string): string {
+  return [
+    'This command cannot change your current shell by itself.',
+    '',
+    'To switch the current shell:',
+    `  eval "$(agent-meter use ${shellQuote(accountRef)})"`,
+    '',
+    'To launch Codex directly with this account:',
+    `  agent-meter codex ${shellQuote(accountRef)}`,
   ].join('\n');
 }
 
@@ -348,8 +362,31 @@ program
       return;
     }
 
+    if (process.stdout.isTTY) {
+      process.stdout.write(`${renderUseGuidance(ref)}\n`);
+      return;
+    }
+
     process.stderr.write('Note: restart any running codex session. The switch only affects new codex processes.\n');
     process.stdout.write(`${shellCode}\n`);
+  });
+
+program
+  .command('codex')
+  .argument('<account>')
+  .argument('[codexArgs...]')
+  .allowUnknownOption(true)
+  .description('launch codex using the selected account')
+  .action((ref: string, codexArgs: string[]) => {
+    const opts = program.opts<GlobalOptions>();
+    const { paths, store } = getStore(opts);
+    const account = resolveAccountRef(store, ref);
+    ensureCodexConfigInitialized(account.codexHome);
+    const nextStore = setDefaultAccount(store, account.id);
+    writeStore(paths, nextStore);
+
+    process.stderr.write(`Launching codex with ${account.email || account.label}.\n`);
+    runCodexCommand(codexArgs, buildCodexEnv(account.codexHome));
   });
 
 program
