@@ -13,7 +13,7 @@ npm install -g @kodo/agent-meter
 Or run directly with npx:
 
 ```bash
-npx @kodo/agent-meter list
+npx -y @kodo/agent-meter@latest list
 ```
 
 ## Usage
@@ -25,7 +25,7 @@ agent-meter add
 # List all accounts with real-time usage check
 agent-meter list
 
-# Show the default account and the current shell's effective account
+# Show the default account and the shell's effective auth state
 agent-meter current
 
 # Switch the default Codex account for the current shell
@@ -39,8 +39,8 @@ agent-meter delete <email>
 
 - `add` creates an isolated `CODEX_HOME` directory, runs `codex login`, then immediately checks usage
 - `list` concurrently checks all accounts via the OAuth usage API and displays a table with progress bars
-- `current` shows both the default account and the current shell's effective `CODEX_HOME` account
-- `use` changes the default account and prints shell code that unsets conflicting OpenAI env vars and exports `CODEX_HOME=...`
+- `current` shows the default account, the shell's effective auth source, and whether environment variables are overriding `CODEX_HOME`
+- `use` changes the default account, initializes blank account configs from `~/.codex/config.toml`, and prints shell code that unsets conflicting OpenAI env vars and exports `CODEX_HOME=...`
 - `use` only affects new Codex CLI processes; restart any running `codex` session after switching
 - `delete` removes the account and its `CODEX_HOME` directory
 - If a token expires during `list`, you'll be prompted to re-login on the spot
@@ -55,7 +55,7 @@ agent-meter delete <email>
 |------|-------------|
 | `--json` | Output raw JSON |
 | `--verbose` | Enable verbose logging |
-| `--data-dir <path>` | Override the default `.data` directory |
+| `--data-dir <path>` | Override the default `~/.agent-meter` directory |
 
 ## License
 

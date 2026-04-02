@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 export type SourceUsed = 'oauth';
@@ -44,6 +45,11 @@ export interface DataPaths {
 }
 
 const STORE_VERSION = 1;
+const PRIMARY_CODEX_CONFIG = path.join(os.homedir(), '.codex', 'config.toml');
+
+function hasConfigContent(value: string | null): boolean {
+  return Boolean(value && value.trim().length > 0);
+}
 
 export function createDataPaths(dataDir: string): DataPaths {
   return {
@@ -181,11 +187,30 @@ export function writeStore(paths: DataPaths, store: AccountStore): void {
 export function createCodexHome(paths: DataPaths, accountId: string): string {
   const codexHome = path.join(paths.codexHomesDir, accountId);
   fs.mkdirSync(codexHome, { recursive: true });
-  const configPath = path.join(codexHome, 'config.toml');
-  if (!fs.existsSync(configPath)) {
-    fs.writeFileSync(configPath, '');
-  }
+  ensureCodexConfigInitialized(codexHome);
   return codexHome;
+}
+
+export function ensureCodexConfigInitialized(codexHome: string): void {
+  fs.mkdirSync(codexHome, { recursive: true });
+  const configPath = path.join(codexHome, 'config.toml');
+  const current = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : null;
+
+  if (hasConfigContent(current)) {
+    return;
+  }
+
+  if (!fs.existsSync(PRIMARY_CODEX_CONFIG)) {
+    if (current == null) {
+      fs.writeFileSync(configPath, '');
+    }
+    return;
+  }
+
+  const source = fs.readFileSync(PRIMARY_CODEX_CONFIG, 'utf8');
+  if (current == null || !hasConfigContent(current)) {
+    fs.writeFileSync(configPath, source);
+  }
 }
 
 export function updateAccount(

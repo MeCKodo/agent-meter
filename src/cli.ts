@@ -17,6 +17,7 @@ import {
   removeAccountFromStore,
   resolveAccountRef,
   setDefaultAccount,
+  ensureCodexConfigInitialized,
   updateAccount,
   writeStore,
   type AccountStore,
@@ -60,6 +61,13 @@ const CODEX_AUTH_OVERRIDE_ENV_VARS = [
   'OPENAI_API_KEY',
   'OPENAI_BASE_URL',
 ] as const;
+
+function getActiveAuthOverrideEnvVars(env: NodeJS.ProcessEnv = process.env): string[] {
+  return CODEX_AUTH_OVERRIDE_ENV_VARS.filter(name => {
+    const value = env[name];
+    return typeof value === 'string' && value.trim().length > 0;
+  });
+}
 
 function buildUseShellCode(codexHome: string): string {
   return [
@@ -265,26 +273,44 @@ program
     const { store } = getStore(opts);
     const account = getDefaultAccount(store);
     const effectiveCodexHome = process.env.CODEX_HOME;
-    const effectiveAccount = findAccountByCodexHome(store, effectiveCodexHome);
+    const authOverrideVars = getActiveAuthOverrideEnvVars();
+    const codexHomeAccount = findAccountByCodexHome(store, effectiveCodexHome);
+    const effectiveAccount = authOverrideVars.length > 0 ? null : codexHomeAccount;
+    const effectiveAuthSource = authOverrideVars.length > 0 ? 'environment' : 'codex_home';
     const matchesDefault = Boolean(account && effectiveAccount && account.id === effectiveAccount.id);
 
     if (opts.json) {
       printJson({
         account,
+        effectiveAuthSource,
         effectiveAccount,
+        codexHomeAccount,
         effectiveCodexHome: effectiveCodexHome || null,
+        authOverrideVars,
         matchesDefault,
       });
       return;
     }
 
     if (!account) {
-      process.stdout.write('No accounts configured.\n');
-      return;
+      process.stdout.write('Default account: none\n');
+      process.stdout.write('Default CODEX_HOME=\n');
+    } else {
+      process.stdout.write(`Default account: ${account.email || account.label}\n`);
+      process.stdout.write(`Default CODEX_HOME=${account.codexHome}\n`);
     }
 
-    process.stdout.write(`Default account: ${account.email || account.label}\n`);
-    process.stdout.write(`Default CODEX_HOME=${account.codexHome}\n`);
+    if (authOverrideVars.length > 0) {
+      process.stdout.write(`Effective auth source: environment override (${authOverrideVars.join(', ')})\n`);
+      if (effectiveCodexHome) {
+        process.stdout.write(`Effective CODEX_HOME=${effectiveCodexHome} (currently overridden)\n`);
+      }
+      if (codexHomeAccount) {
+        process.stdout.write(`CODEX_HOME account: ${codexHomeAccount.email || codexHomeAccount.label}\n`);
+      }
+      process.stdout.write('Shell status: overridden by environment variables\n');
+      return;
+    }
 
     if (!effectiveCodexHome) {
       process.stdout.write('Effective shell account: none (CODEX_HOME is not set)\n');
@@ -309,6 +335,7 @@ program
     const opts = program.opts<GlobalOptions>();
     const { paths, store } = getStore(opts);
     const account = resolveAccountRef(store, ref);
+    ensureCodexConfigInitialized(account.codexHome);
     const nextStore = setDefaultAccount(store, account.id);
     writeStore(paths, nextStore);
     const shellCode = buildUseShellCode(account.codexHome);
