@@ -25,7 +25,7 @@ agent-meter add
 # List all accounts with real-time usage check
 agent-meter list
 
-# Show the current default account
+# Show the default account and the current shell's effective account
 agent-meter current
 
 # Switch the default Codex account for the current shell
@@ -39,8 +39,9 @@ agent-meter delete <email>
 
 - `add` creates an isolated `CODEX_HOME` directory, runs `codex login`, then immediately checks usage
 - `list` concurrently checks all accounts via the OAuth usage API and displays a table with progress bars
-- `current` shows which account is currently marked as the default
-- `use` changes the default account and prints an `export CODEX_HOME=...` command for your shell
+- `current` shows both the default account and the current shell's effective `CODEX_HOME` account
+- `use` changes the default account and prints shell code that unsets conflicting OpenAI env vars and exports `CODEX_HOME=...`
+- `use` only affects new Codex CLI processes; restart any running `codex` session after switching
 - `delete` removes the account and its `CODEX_HOME` directory
 - If a token expires during `list`, you'll be prompted to re-login on the spot
 

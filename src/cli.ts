@@ -56,6 +56,32 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
 }
 
+const CODEX_AUTH_OVERRIDE_ENV_VARS = [
+  'OPENAI_API_KEY',
+  'OPENAI_BASE_URL',
+] as const;
+
+function buildUseShellCode(codexHome: string): string {
+  return [
+    `unset ${CODEX_AUTH_OVERRIDE_ENV_VARS.join(' ')}`,
+    `export CODEX_HOME=${shellQuote(codexHome)}`,
+  ].join('\n');
+}
+
+function normalizePathForCompare(value: string): string {
+  try {
+    return fs.realpathSync(value);
+  } catch {
+    return path.resolve(value);
+  }
+}
+
+function findAccountByCodexHome(store: AccountStore, codexHome: string | undefined): ReturnType<typeof getDefaultAccount> {
+  if (!codexHome) return null;
+  const target = normalizePathForCompare(codexHome);
+  return store.accounts.find(account => normalizePathForCompare(account.codexHome) === target) ?? null;
+}
+
 function confirm(question: string): Promise<boolean> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise(resolve => {
@@ -238,9 +264,17 @@ program
     const opts = program.opts<GlobalOptions>();
     const { store } = getStore(opts);
     const account = getDefaultAccount(store);
+    const effectiveCodexHome = process.env.CODEX_HOME;
+    const effectiveAccount = findAccountByCodexHome(store, effectiveCodexHome);
+    const matchesDefault = Boolean(account && effectiveAccount && account.id === effectiveAccount.id);
 
     if (opts.json) {
-      printJson({ account });
+      printJson({
+        account,
+        effectiveAccount,
+        effectiveCodexHome: effectiveCodexHome || null,
+        matchesDefault,
+      });
       return;
     }
 
@@ -249,8 +283,22 @@ program
       return;
     }
 
-    process.stdout.write(`Current account: ${account.email || account.label}\n`);
-    process.stdout.write(`CODEX_HOME=${account.codexHome}\n`);
+    process.stdout.write(`Default account: ${account.email || account.label}\n`);
+    process.stdout.write(`Default CODEX_HOME=${account.codexHome}\n`);
+
+    if (!effectiveCodexHome) {
+      process.stdout.write('Effective shell account: none (CODEX_HOME is not set)\n');
+      return;
+    }
+
+    process.stdout.write(`Effective CODEX_HOME=${effectiveCodexHome}\n`);
+    if (!effectiveAccount) {
+      process.stdout.write('Effective shell account: unknown (CODEX_HOME is outside agent-meter store)\n');
+      return;
+    }
+
+    process.stdout.write(`Effective shell account: ${effectiveAccount.email || effectiveAccount.label}\n`);
+    process.stdout.write(matchesDefault ? 'Shell status: matches default account\n' : 'Shell status: differs from default account\n');
   });
 
 program
@@ -263,16 +311,18 @@ program
     const account = resolveAccountRef(store, ref);
     const nextStore = setDefaultAccount(store, account.id);
     writeStore(paths, nextStore);
+    const shellCode = buildUseShellCode(account.codexHome);
 
     if (opts.json) {
       printJson({
         account: nextStore.accounts.find(item => item.id === account.id) ?? account,
-        export: `export CODEX_HOME=${shellQuote(account.codexHome)}`,
+        export: shellCode,
       });
       return;
     }
 
-    process.stdout.write(`export CODEX_HOME=${shellQuote(account.codexHome)}\n`);
+    process.stderr.write('Note: restart any running codex session. The switch only affects new codex processes.\n');
+    process.stdout.write(`${shellCode}\n`);
   });
 
 program
