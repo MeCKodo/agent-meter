@@ -24,6 +24,7 @@ import {
 } from './core/accounts.js';
 import {
   CODEX_AUTH_OVERRIDE_ENV_VARS,
+  authFilePath,
   buildCodexEnv,
   captureCodexCommand,
   ensureCodexInstalled,
@@ -55,6 +56,7 @@ type ShellState = {
 };
 
 const DEFAULT_DATA_DIR = path.join(os.homedir(), '.agent-meter');
+const PRIMARY_CODEX_HOME = path.join(os.homedir(), '.codex');
 
 function resolveDataDir(opts: GlobalOptions): string {
   if (!opts.dataDir) return DEFAULT_DATA_DIR;
@@ -86,26 +88,14 @@ function getActiveAuthOverrideEnvVars(env: NodeJS.ProcessEnv = process.env): str
   });
 }
 
-function buildUseShellCode(codexHome: string): string {
-  return [
-    `unset ${CODEX_AUTH_OVERRIDE_ENV_VARS.join(' ')}`,
-    `export CODEX_HOME=${shellQuote(codexHome)}`,
-  ].join('\n');
+function warnAuthOverrides(env: NodeJS.ProcessEnv = process.env): boolean {
+  const overrides = getActiveAuthOverrideEnvVars(env);
+  if (overrides.length === 0) return false;
+  process.stderr.write(`\n⚠ ${overrides.join(', ')} found in your shell — this overrides OAuth account switching.\n`);
+  process.stderr.write(`  Remove it from ~/.zshrc (or wherever it's set), then open a new terminal.\n\n`);
+  return true;
 }
 
-function renderUseGuidance(accountRef: string): string {
-  return [
-    'This command cannot change your current shell by itself.',
-    '',
-    'To switch the current shell:',
-    `  eval "$(agent-meter use ${shellQuote(accountRef)})"`,
-    `  eval "$(npx -y @kodo/agent-meter@latest use ${shellQuote(accountRef)})"`,
-    '',
-    'To launch Codex directly with this account:',
-    `  agent-meter codex ${shellQuote(accountRef)}`,
-    `  npx -y @kodo/agent-meter@latest codex ${shellQuote(accountRef)}`,
-  ].join('\n');
-}
 
 function normalizePathForCompare(value: string): string {
   try {
@@ -155,10 +145,9 @@ function recommendedFixCommands(state: ShellState): string[] {
   if (!ref) return [];
 
   return [
+    `agent-meter use ${shellQuote(ref)}`,
     `agent-meter codex ${shellQuote(ref)}`,
-    `eval "$(agent-meter use ${shellQuote(ref)})"`,
-    `npx -y @kodo/agent-meter@latest codex ${shellQuote(ref)}`,
-    `eval "$(npx -y @kodo/agent-meter@latest use ${shellQuote(ref)})"`,
+    `npx -y @kodo/agent-meter@latest use ${shellQuote(ref)}`,
   ];
 }
 
@@ -331,6 +320,7 @@ program
         process.stdout.write(`✓ Re-logged '${recheckedAccount.email || recheckedAccount.label}'.\n`);
       }
       process.stdout.write(`\n${renderAccountsTable(nextStore)}\n`);
+      warnAuthOverrides();
       return;
     }
 
@@ -339,6 +329,7 @@ program
       return;
     }
     process.stdout.write(`${renderAccountsTable(nextStore)}\n`);
+    warnAuthOverrides();
   });
 
 program
@@ -379,6 +370,7 @@ program
         process.stdout.write(`CODEX_HOME account: ${state.codexHomeAccount.email || state.codexHomeAccount.label}\n`);
       }
       process.stdout.write('Shell status: overridden by environment variables\n');
+      warnAuthOverrides();
       return;
     }
 
@@ -400,7 +392,7 @@ program
 program
   .command('use')
   .argument('<account>')
-  .description('set the default account and print shell code to export CODEX_HOME')
+  .description('switch the active Codex account by copying auth.json into ~/.codex')
   .action((ref: string) => {
     const opts = program.opts<GlobalOptions>();
     const { paths, store } = getStore(opts);
@@ -408,23 +400,48 @@ program
     ensureCodexConfigInitialized(account.codexHome);
     const nextStore = setDefaultAccount(store, account.id);
     writeStore(paths, nextStore);
-    const shellCode = buildUseShellCode(account.codexHome);
+
+    warnAuthOverrides();
+
+    const src = authFilePath(account.codexHome);
+    if (!fs.existsSync(src)) {
+      throw new Error(`auth.json not found at ${src}. Run \`add\` or \`codex login\` first.`);
+    }
+
+    const dest = authFilePath(PRIMARY_CODEX_HOME);
+    fs.mkdirSync(PRIMARY_CODEX_HOME, { recursive: true });
+
+    if (fs.existsSync(dest)) {
+      const isManaged = store.accounts.some(a => {
+        try {
+          return normalizePathForCompare(authFilePath(a.codexHome)) === normalizePathForCompare(dest);
+        } catch { return false; }
+      });
+      if (!isManaged) {
+        const backup = `${dest}.bak`;
+        if (!fs.existsSync(backup)) {
+          fs.copyFileSync(dest, backup);
+          if (!opts.json) {
+            process.stderr.write(`Backed up original auth to ${backup}\n`);
+          }
+        }
+      }
+    }
+
+    fs.copyFileSync(src, dest);
+
+    const label = account.email || account.label;
 
     if (opts.json) {
       printJson({
         account: nextStore.accounts.find(item => item.id === account.id) ?? account,
-        export: shellCode,
+        codexHome: PRIMARY_CODEX_HOME,
       });
       return;
     }
 
-    if (process.stdout.isTTY) {
-      process.stdout.write(`${renderUseGuidance(account.email || account.label)}\n`);
-      return;
-    }
-
-    process.stderr.write('Note: restart any running codex session. The switch only affects new codex processes.\n');
-    process.stdout.write(`${shellCode}\n`);
+    process.stdout.write(`✓ Switched to '${label}'. Auth copied to ${dest}\n`);
+    process.stdout.write('Note: restart any running Codex session for the switch to take effect.\n');
   });
 
 program
